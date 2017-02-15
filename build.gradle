@@ -1,59 +1,106 @@
-import de.undercouch.gradle.tasks.download.Download
-import org.apache.tools.ant.filters.ReplaceTokens
-
-buildscript {
-    repositories {
-        jcenter()
-    }
-    dependencies {
-        classpath group: 'com.github.rodionmoiseev.gradle.plugins', name: 'idea-utils', version: '0.2'
-    }
-}
-
 plugins {
-    id "com.github.johnrengelman.shadow" version "1.2.3"
-    id "de.undercouch.download" version "3.1.1"
-}
-
-apply plugin: 'java'
-apply plugin: 'eclipse'
-apply plugin: 'idea'
-apply plugin: 'idea-utils'
-
-idea {
-    project {
-        ipr {
-            withXml { xmlProvider ->
-                def project = xmlProvider.asNode()
-                def runConfigs = new XmlParser().parse(new File("config/intellij_runconfigs.xml"))
-                project.append(runConfigs)
-            }
-        }
-    }
+    id "com.github.johnrengelman.shadow" version "1.2.4"
+	id 'com.github.ben-manes.versions' version '0.13.0'
+    id "de.undercouch.download" version "3.1.2"
+    id 'java'
 }
 
 repositories {
     mavenLocal()
     mavenCentral()
+    jcenter()
+    maven {
+        name 'spigot-repo'
+        url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/'
+    }
 }
 
-group = project.property("group")
+import org.apache.tools.ant.filters.ReplaceTokens
+
+groupId = project.property("groupId")
 version = project.property("version")
 sourceCompatibility = project.property("sourceversion")
 
-dependencies {
-    compile group: 'org.spigotmc', name: 'spigot-api', version: project.property("apiversion")
-    compile group: 'org.spigotmc', name: 'spigot', version: project.property("apiversion")
+configurations {
+	plugins {
+        description = 'dependencies that need to be present for compilation and on the server, but not in it´s classpath'
+        transitive = true
+	}
+	
+	providedServer {
+        description = 'dependencies that need to be present for compilation and on the server'
+        transitive = true
+	}
+	
+	provided {
+        description = 'dependencies that only need to be present for compilation'
+        transitive = true
+        
+        extendsFrom providedServer
+        extendsFrom plugins
+	}
+	
+	compileOnly.extendsFrom provided
+	
+	serverOnly {
+        description = 'dependencies that only need to be present on the server'
+        transitive = true
+		
+		extendsFrom providedServer
+		exclude group: 'org.spigotmc', module: 'spigot-api'
+	}
+}
 
-    // dependencies go here
-    // Example:
-    // compile group: 'com.google.guava', name: 'guava', version: '19.0'
+dependencies {
+	
+	// Spigot API
+    provided group: 'org.spigotmc', name: 'spigot-api', version: project.property("apiversion")
+    
+    // Spigot server
+    serverOnly group: 'org.spigotmc', name: 'spigot', version: project.property("apiversion")
+	
+	// Bukkit 
+    providedServer group: 'org.bukkit', name: 'bukkit', version: project.property("apiversion")
+	
+	// Craftbukkit
+	providedServer group: 'org.bukkit', name: 'craftbukkit', version: project.property("apiversion")
+    
+	// dependencies needed for compilation and on runtime
+    // compile group: 'net.dv8tion', name: 'JDA', version: '3.0.BETA2_118'
+    
+	// dependencies only needed for compilation
+	// provided group: 'net.dv8tion', name: 'JDA', version: '3.0.BETA2_118'
+	
+	// dependencies only needed on runtime
+	// compileOnly group: 'net.dv8tion', name: 'JDA', version: '3.0.BETA2_118'
+	
+    // Provided local jars (not needed on runtime)
+    provided fileTree(dir: 'libs/provided', include: '*.jar')
+	
+	// Other plugins this plugin depends on
+    plugins fileTree(dir: 'libs/plugins', include: '*.jar')
+    
+    // Jars to include in that shaded jar
+    compile fileTree(dir: 'libs/compile', include: '*.jar')    
+}
+
+shadowJar {
+	baseName = project.property("pluginName")
+	classifier = ''
+	
+	// add jars that need to be relocated to another namespace here
+	// relocate 'org.apache.commons.lang3', project.group + ".org.apache.commons.lang3"
 }
 
 processResources {
     filter ReplaceTokens, tokens: [
-            "apiversion": project.property("apiversion"),
-            "version"   : project.property("version")
+            "apiversion":    project.property("apiversion"),
+            "name":          project.property("pluginName"),
+            "mainClass":     project.property("mainClass"),
+            "version":       project.property("version"),
+            "author":        project.property("author"),
+            "description":   project.property("description"),
+            "website":       project.property("website")
     ]
 }
 
@@ -72,41 +119,29 @@ jar {
     dependsOn('shadowJar')
 }
 
-shadowJar {
-    dependencies {
-        exclude(dependency('org.spigotmc:spigot-api:.*'))
-        exclude(dependency('org.spigotmc:spigot:.*'))
-    }
-}
-
-task deploy(type: Copy, dependsOn: ['build']) {
-    from "${buildDir}/libs"
-    into "final/"
-}
-
 task setupDevServer(dependsOn: 'extractServerJar', type: Copy) {
+    group = 'other'
     from 'config/serverfiles'
     into 'testserver'
 }
 
 task extractServerJar(type: Copy) {
-    from {
-        configurations.runtime
-    }
-    include("spigot-" + project.property("apiversion") + ".jar")
-    rename("spigot-" + project.property("apiversion") + ".jar", "server.jar")
-    into "testserver/"
+    group = 'other'
 }
 
-task copyPluginToTestserver(dependsOn: ['build'], type: Copy) {
+task copyPluginsToTestserver(dependsOn: ['build'], type: Copy) {
+    group = 'other'
     from "${buildDir}/libs"
+    from "/libs/plugins"
     into "testserver/plugins"
 }
 
-task prepareDevServer(dependsOn: ['buildSpigot', 'setupDevServer', 'copyPluginToTestserver']) {}
+task prepareDevServer(dependsOn: ['buildSpigot', 'setupDevServer', 'copyPluginsToTestserver']) {}
 
 task startDevServer(dependsOn: [prepareDevServer], type: JavaExec) {
-    classpath configurations.compile, configurations.runtime
+    group = 'test'
+    description = "Starts a spigot server to test the plugin"
+    classpath configurations.serverOnly
     main = "org.bukkit.craftbukkit.Main"
     workingDir = "testserver/"
     standardInput = System.in
@@ -117,28 +152,35 @@ task startDevServer(dependsOn: [prepareDevServer], type: JavaExec) {
 def spigotBuildDir = new File("$buildDir/spigot/")
 
 task setupWorkspace(dependsOn: ['buildSpigot']) {
+    group = 'build setup'
+    description = "prepares the workspace for development, only needed once or on api tools update"
 }
 
-task buildSpigot(type: JavaExec) {
+task buildSpigot(type: Exec) {
     if (hasSpigot()) {
         enabled = false;
-        dependsOn = [];
     } else {
-        dependsOn = ['cleanSpigotBuild', 'downloadBuildTool']
+        dependsOn 'cleanSpigotBuild', 'downloadBuildTools'
+     	
+     	if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+     		commandLine "where git".execute().text.trim().replace('cmd\\git.exe', 'bin\\sh.exe'), '-login', '-c', "java -jar BuildTools.jar --rev " + project.property("apibuildtoolversion")
+     	} else {
+     		commandLine "java -jar BuildTools.jar --rev " + project.property("apibuildtoolversion")
+     	}
+    	workingDir = spigotBuildDir
     }
-    main = '-jar'
-    args new File(spigotBuildDir, "BuildTools.jar").getAbsolutePath(), "--rev", project.property("apibuildtoolversion")
-    workingDir = spigotBuildDir
 }
 
-task downloadBuildTool(type: Download) {
+task downloadBuildTools(type: de.undercouch.gradle.tasks.download.Download) {
     spigotBuildDir.mkdirs()
     src project.property("buildtoolurl")
     dest new File(spigotBuildDir, "BuildTools.jar")
 }
 
 task cleanSpigotBuild() {
-    spigotBuildDir.deleteDir()
+    doLast {
+        spigotBuildDir.deleteDir()
+    }
 }
 
 def hasSpigot() {
@@ -153,4 +195,6 @@ def hasArtifact(groupId, artifactId, version) {
     return file.exists()
 }
 
-// END Building Spigot and Bukkit
+wrapper {
+	gradleVersion = '3.3'
+}
