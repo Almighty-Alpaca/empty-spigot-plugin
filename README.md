@@ -20,7 +20,7 @@ This is an empty Spigot plugin. It uses Gradle to make sure the correct version 
 - Open the project in IntelliJ by opening the created `.ipr` file. Otherwise the run configurations will not be in place for you!
 - Make sure to click "Link Gradle Project" in the right upper corner after the first start to have Gradle working properly. Check the IntelliJ Event Log if you missed it.
 
-## Eclipse (You can try to use it, but IDEA is better...)
+## Eclipse
 - Clone repository
 - Setup Worksapce
   - Windows:  
