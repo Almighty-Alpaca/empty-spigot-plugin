@@ -149,7 +149,7 @@ task startDevServer(dependsOn: [prepareDevServer], type: JavaExec) {
 
 // START Building Spigot and Bukkit
 
-def spigotBuildDir = new File('$buildDir/spigot/')
+def spigotBuildDir = new File("${project.buildDir}/spigot/")
 
 task setupWorkspace(dependsOn: ['buildSpigot']) {
     group = 'build setup'
@@ -160,7 +160,7 @@ task buildSpigot(type: Exec) {
     if (hasSpigot()) {
         enabled = false;
     } else {
-        dependsOn 'cleanSpigotBuild', 'downloadBuildTools'
+        dependsOn 'downloadBuildTools'
 
          if (System.getProperty('os.name').toLowerCase().contains('windows')) {
              commandLine 'where git'.execute().text.trim().replace('cmd\\git.exe', 'bin\\sh.exe'), '-login', '-c', 'java -jar BuildTools.jar --rev ' + project.property('apibuildtoolversion')
@@ -175,12 +175,6 @@ task downloadBuildTools(type: de.undercouch.gradle.tasks.download.Download) {
     spigotBuildDir.mkdirs()
     src project.property('buildtoolurl')
     dest new File(spigotBuildDir, 'BuildTools.jar')
-}
-
-task cleanSpigotBuild() {
-    doLast {
-        spigotBuildDir.deleteDir()
-    }
 }
 
 def hasSpigot() {
